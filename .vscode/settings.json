@@ -4,7 +4,7 @@
   "idf.openOcdConfigs": [
     "board/esp32c6-builtin.cfg"
   ],
-  "idf.portWin": "detect",
+  "idf.portWin": "COM8",
   "idf.currentSetup": "C:\\esp\\v6.0.2\\esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32c6"
@@ -14,5 +14,6 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=d:\\github_repository\\ESP32C6_ZIGBEE\\build"
-  ]
+  ],
+  "idf.flashType": "UART"
 }
