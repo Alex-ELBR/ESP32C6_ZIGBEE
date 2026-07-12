@@ -115,7 +115,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         break;
     case ESP_ZB_BDB_SIGNAL_STEERING:
         if (err_status == ESP_OK) {
-            ESP_LOGI(TAG, "Network steering started. Opening network for devices...");
+            ESP_LOGW(TAG, "ЭФИР ОТКРЫТ! Переведите ваши датчики Tuya ZBTH3 в режим сопряжения...");
             esp_zb_bdb_open_network(180); // Открываем сеть на 180 секунд после старта
         }
         break;
