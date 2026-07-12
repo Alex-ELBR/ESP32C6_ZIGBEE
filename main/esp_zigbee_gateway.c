@@ -1,7 +1,7 @@
 /*
  * SPDX-FileCopyrightText: 2021-2026 Espressif Systems (Shanghai) CO LTD
  *
- * ЧАСТЬ 1: ХРАНЕНИЕ СТРУКТУР ДАТЧИКОВ, ПОИСК МИНИМУМА И ОБРАБОТЧИК СИГНАЛОВ СЕТИ
+ * ЧАСТЬ 1: БАЗА ДАННЫХ ДАТЧИКОВ TUYA И ВЫЧИСЛЕНИЕ МИНИМУМА ТЕМПЕРАТУРЫ
  */
 #include <fcntl.h>
 #include <string.h>
@@ -23,8 +23,8 @@
 
 static const char *TAG = "ESP_ZB_GATEWAY";
 
-// Маска радиоканалов Zigbee (разрешаем каналы 11-26) под датчики Tuya
-#define ESP_ZB_PRIMARY_CHANNEL_MASK      ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK
+// Маска радиоканалов Zigbee (строго ограничиваем: 11, 15, 20, 25) под датчики Tuya
+#define ESP_ZB_PRIMARY_CHANNEL_MASK      (1u << 11 | 1u << 15 | 1u << 20 | 1u << 25)
 #define MAX_SENSORS 10
 
 typedef struct {
@@ -116,7 +116,9 @@ static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
 {
     esp_zb_bdb_start_top_level_commissioning(mode_mask);
 }
-
+/*
+ * ЧАСТЬ 2: СИГНАЛЫ СЕТИ, НАСТРОЙКА И КОНФИГУРАЦИЯ СБРОСА ПРИ СТАРТЕ
+ */
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
     uint32_t *p_sg_p       = signal_struct->p_app_signal;
@@ -172,22 +174,35 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         break;
     }
 }
-/*
- * ЧАСТЬ 2: ИНИЦИАЛИЗАЦИЯ КООРДИНАТОРА И ПЛАТФОРМЫ, ТОЧКА ВХОДА MAIN
- */
+
 static void esp_zb_task(void *pvParameters)
 {
     memset(sensors, 0, sizeof(sensors));
     
-    // Чистая конфигурация координатора для SDK v1.6+ (ESP-IDF v6.0)
     esp_zb_cfg_t zb_nwk_cfg = {
         .esp_zb_role = ESP_ZB_DEVICE_TYPE_COORDINATOR,
         .install_code_policy = false 
     };
+    // Шаг 1: Инициализируем стек стандартно
     esp_zb_init(&zb_nwk_cfg);
     
-    // Строка esp_zb_bdb_set_tc_policy ПОЛНОСТЬЮ УДАЛЕНА для исключения ошибок неявного объявления
-    
+    // Шаг 2: ХИТРОСТЬ ДЛЯ КОРРЕКТНОГО СБРОСА СЕТИ В SDK v1.6+
+    // Теперь функция esp_zb_bdb_is_factory_new() отработает правильно, 
+    // так как стек уже инициализирован строкой выше.
+    if (esp_zb_bdb_is_factory_new() == false) {
+        ESP_LOGE(TAG, "==================================================");
+        ESP_LOGE(TAG, "Обнаружена старая сеть в памяти! Стираем таблицы...");
+        ESP_LOGE(TAG, "==================================================");
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Даем логам напечататься
+        
+        esp_zb_factory_reset(); // Физически уничтожает таблицы Zigbee и перезагружает чип
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // Шаг 3: Настройка параметров новой чистой сети
+    // Меняем PAN ID на случайный (например, 0x2A3B), чтобы датчик Tuya точно увидел новую сеть
+    esp_zb_set_pan_id(0x2A3B); 
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
     
     esp_zb_ep_list_t *ep_list = esp_zb_ep_list_create();
@@ -205,11 +220,9 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_cluster_list_add_basic_cluster(cluster_list, basic_cluser, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
     esp_zb_cluster_list_add_identify_cluster(cluster_list, esp_zb_identify_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
     
-    // Подключаем измерительные кластеры для прослушивания датчика климата
     esp_zb_cluster_list_add_humidity_meas_cluster(cluster_list, esp_zb_humidity_meas_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE);
     esp_zb_cluster_list_add_temperature_meas_cluster(cluster_list, esp_zb_temperature_meas_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE);
     
-    // Кастомный Tuya-кластер для стабильного удержания соединения
     esp_zb_attribute_list_t *tuya_custom_cluster = esp_zb_zcl_attr_list_create(0xEF00);
     esp_zb_cluster_list_add_custom_cluster(cluster_list, tuya_custom_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
 
@@ -217,7 +230,6 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_device_register(ep_list);
     esp_zb_core_action_handler_register(zb_action_handler);
 
-    // Добавляем обязательный ключ шифрования для коммерческих датчиков "ZigbeeAlliance09"
     uint8_t tuya_link_key[] = {0x5A, 0x69, 0x67, 0x42, 0x65, 0x65, 0x41, 0x6C, 0x6C, 0x69, 0x61, 0x6E, 0x63, 0x65, 0x30, 0x39};
     esp_zb_secur_ic_set(0, tuya_link_key);
 
@@ -229,14 +241,9 @@ static void esp_zb_task(void *pvParameters)
 void app_main(void)
 {
     esp_zb_platform_config_t config = {
-        .radio_config = {
-            .radio_mode = ZB_RADIO_MODE_NATIVE,
-        },
-        .host_config = {
-            .host_connection_mode = ZB_HOST_CONNECTION_MODE_NONE,
-        }
+        .radio_config = { .radio_mode = ZB_RADIO_MODE_NATIVE },
+        .host_config = { .host_connection_mode = ZB_HOST_CONNECTION_MODE_NONE }
     };
-
     ESP_ERROR_CHECK(esp_zb_platform_config(&config));
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
