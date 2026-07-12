@@ -1,7 +1,7 @@
 /*
  * SPDX-FileCopyrightText: 2021-2026 Espressif Systems (Shanghai) CO LTD
  *
- * ЧАСТЬ 1: ХРАНЕНИЕ СТРУКТУР И ОБРАБОТКА ДАННЫХ TUYA ZBTH3
+ * ЧАСТЬ 1: ХРАНЕНИЕ СТРУКТУР ДАТЧИКОВ, ПОИСК МИНИМУМА И ОБРАБОТЧИК СИГНАЛОВ СЕТИ
  */
 #include <fcntl.h>
 #include <string.h>
@@ -23,7 +23,7 @@
 
 static const char *TAG = "ESP_ZB_GATEWAY";
 
-// Объявляем маску радиоканалов Zigbee напрямую (каналы 11-26)
+// Маска радиоканалов Zigbee (разрешаем каналы 11-26) под датчики Tuya
 #define ESP_ZB_PRIMARY_CHANNEL_MASK      ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK
 #define MAX_SENSORS 10
 
@@ -111,9 +111,7 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
     }
     return ESP_OK;
 }
-/*
- * ЧАСТЬ 2: СИГНАЛЫ СЕТИ И ПРАВИЛЬНАЯ ИНИЦИАЛИЗАЦИЯ ПЛАТФОРМЫ ПОД СТЕК v6.0
- */
+
 static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
 {
     esp_zb_bdb_start_top_level_commissioning(mode_mask);
@@ -174,30 +172,33 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         break;
     }
 }
-
+/*
+ * ЧАСТЬ 2: ИНИЦИАЛИЗАЦИЯ КООРДИНАТОРА И ПЛАТФОРМЫ, ТОЧКА ВХОДА MAIN
+ */
 static void esp_zb_task(void *pvParameters)
 {
     memset(sensors, 0, sizeof(sensors));
     
-    // Задаем конфигурацию координатора без внешних макросов
+    // Чистая конфигурация координатора для SDK v1.6+ (ESP-IDF v6.0)
     esp_zb_cfg_t zb_nwk_cfg = {
         .esp_zb_role = ESP_ZB_DEVICE_TYPE_COORDINATOR,
         .install_code_policy = false 
     };
     esp_zb_init(&zb_nwk_cfg);
+    
+    // Строка esp_zb_bdb_set_tc_policy ПОЛНОСТЬЮ УДАЛЕНА для исключения ошибок неявного объявления
+    
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
     
     esp_zb_ep_list_t *ep_list = esp_zb_ep_list_create();
     esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
     
-    // Заменяем макрос эндпоинта на прямую цифру 1
     esp_zb_endpoint_config_t endpoint_config = {
         .endpoint = 1,
         .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
         .app_device_id = ESP_ZB_HA_REMOTE_CONTROL_DEVICE_ID,
     };
 
-    // Заменяем макросы производителя и модели на прямые текстовые строки
     esp_zb_attribute_list_t *basic_cluser = esp_zb_basic_cluster_create(NULL);
     esp_zb_basic_cluster_add_attr(basic_cluser, ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID, "\x09\x45\x73\x70\x72\x65\x73\x73\x69\x66");
     esp_zb_basic_cluster_add_attr(basic_cluser, ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID, "\x0c\x45\x53\x50\x33\x32\x43\x36\x2d\x47\x57");
@@ -216,7 +217,7 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_device_register(ep_list);
     esp_zb_core_action_handler_register(zb_action_handler);
 
-    // Добавляем обязательный ключ шифрования для датчиков умного дома
+    // Добавляем обязательный ключ шифрования для коммерческих датчиков "ZigbeeAlliance09"
     uint8_t tuya_link_key[] = {0x5A, 0x69, 0x67, 0x42, 0x65, 0x65, 0x41, 0x6C, 0x6C, 0x69, 0x61, 0x6E, 0x63, 0x65, 0x30, 0x39};
     esp_zb_secur_ic_set(0, tuya_link_key);
 
@@ -227,7 +228,6 @@ static void esp_zb_task(void *pvParameters)
 
 void app_main(void)
 {
-    // Заменяем функции конфигурации платформы дефолтной структурой радио-сопряжения радиомодуля ESP32-C6
     esp_zb_platform_config_t config = {
         .radio_config = {
             .radio_mode = ZB_RADIO_MODE_NATIVE,
