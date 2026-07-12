@@ -1,7 +1,7 @@
 /*
  * SPDX-FileCopyrightText: 2021-2026 Espressif Systems (Shanghai) CO LTD
  *
- * ЧАСТЬ 1: БАЗА ДАННЫХ ДАТЧИКОВ TUYA И ВЫЧИСЛЕНИЕ МИНИМУМА ТЕМПЕРАТУРЫ
+ * ЧАСТЬ 1: БАЗА ДАННЫХ ДАТЧИКОВ TUYA И ВЫЧИСЛЕНИЕ МИНИМАЛЬНОЙ ТЕМПЕРАТУРЫ
  */
 #include <fcntl.h>
 #include <string.h>
@@ -117,7 +117,7 @@ static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
     esp_zb_bdb_start_top_level_commissioning(mode_mask);
 }
 /*
- * ЧАСТЬ 2: СИГНАЛЫ СЕТИ, НАСТРОЙКА И КОНФИГУРАЦИЯ СБРОСА ПРИ СТАРТЕ
+ * ЧАСТЬ 2: АВТОМАТ СЕТЕВЫХ СИГНАЛОВ С БЕЗОПАСНЫМ СБРОСОМ И СТАРТ СИСТЕМЫ
  */
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
@@ -134,13 +134,19 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
     case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:
         if (err_status == ESP_OK) {
+            // ИСПРАВЛЕННЫЙ УМНЫЙ СБРОС: Проверяем статус сети прямо внутри системного сигнала
             if (esp_zb_bdb_is_factory_new()) {
-                ESP_LOGI(TAG, "Формирование новой Zigbee сети...");
+                // Если сеть чистая — запускаем её формирование на каналах Tuya
+                ESP_LOGI(TAG, "Формирование новой чистой Zigbee сети...");
                 esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_FORMATION);
             } else {
-                ESP_LOGI(TAG, "Сеть восстановлена из NVS памяти. Эфир открыт.");
-                esp_zb_bdb_open_network(180);
-                process_and_log_minimum();
+                // Если стек пытается восстановить старую сеть — принудительно перехватываем это,
+                // стираем кэш и уходим в одну перезагрузку. После ребута сеть станет factory_new!
+                ESP_LOGE(TAG, "==================================================");
+                ESP_LOGE(TAG, "Перехват старой сети из NVS! Выполняется сброс...");
+                ESP_LOGE(TAG, "==================================================");
+                vTaskDelay(pdMS_TO_TICKS(500));
+                esp_zb_factory_reset(); 
             }
         }
         break;
@@ -183,26 +189,10 @@ static void esp_zb_task(void *pvParameters)
         .esp_zb_role = ESP_ZB_DEVICE_TYPE_COORDINATOR,
         .install_code_policy = false 
     };
-    // Шаг 1: Инициализируем стек стандартно
     esp_zb_init(&zb_nwk_cfg);
     
-    // Шаг 2: ХИТРОСТЬ ДЛЯ КОРРЕКТНОГО СБРОСА СЕТИ В SDK v1.6+
-    // Теперь функция esp_zb_bdb_is_factory_new() отработает правильно, 
-    // так как стек уже инициализирован строкой выше.
-    if (esp_zb_bdb_is_factory_new() == false) {
-        ESP_LOGE(TAG, "==================================================");
-        ESP_LOGE(TAG, "Обнаружена старая сеть в памяти! Стираем таблицы...");
-        ESP_LOGE(TAG, "==================================================");
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Даем логам напечататься
-        
-        esp_zb_factory_reset(); // Физически уничтожает таблицы Zigbee и перезагружает чип
-        vTaskDelete(NULL);
-        return;
-    }
-
-    // Шаг 3: Настройка параметров новой чистой сети
-    // Меняем PAN ID на случайный (например, 0x2A3B), чтобы датчик Tuya точно увидел новую сеть
-    esp_zb_set_pan_id(0x2A3B); 
+    // Принудительно меняем PAN ID на уникальный, чтобы датчик не путал его со старыми сетями
+    esp_zb_set_pan_id(0x4A5B);
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
     
     esp_zb_ep_list_t *ep_list = esp_zb_ep_list_create();
