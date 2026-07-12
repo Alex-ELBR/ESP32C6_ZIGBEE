@@ -23,6 +23,8 @@
 #include "zb_config_platform.h"
 #include "zcl/esp_zigbee_zcl_common.h"
 
+#include "ssd1306.h"
+
 static const char *TAG = "ESP_ZB_GATEWAY";
 
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
@@ -49,12 +51,15 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
         esp_zb_zcl_report_attr_message_t *report_msg = (esp_zb_zcl_report_attr_message_t *)message;
         uint16_t cluster_id = report_msg->cluster;
         uint16_t attribute_id = report_msg->attribute.id;
+    
+
         
         // Исправлены имена макросов согласно ошибкам (использованы стандартные HA)
         if (cluster_id == ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT) {
             if (attribute_id == ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_VALUE_ID) {
                 float humidity = *(uint16_t *)report_msg->attribute.data.value / 100.0;
                 ESP_LOGI(TAG, "Humidity: %.2f %%", humidity);
+
             }
         } else if (cluster_id == ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT) {
             if (attribute_id == ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID) {
@@ -156,7 +161,6 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_cluster_list_add_basic_cluster(cluster_list, basic_cluser, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
     esp_zb_cluster_list_add_identify_cluster(cluster_list, esp_zb_identify_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
     
-    // --- ИСПРАВЛЕНО: функции создания и добавления кластеров ---
     // 1. Влажность
     esp_zb_cluster_list_add_humidity_meas_cluster(cluster_list, esp_zb_humidity_meas_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE);
     // 2. Температура

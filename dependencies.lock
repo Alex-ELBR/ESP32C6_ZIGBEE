@@ -131,6 +131,16 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 1.3.0
+  espressif/ssd1306:
+    component_hash: 102cfc05b1b304862fa3f494e9dd955844bcc5f6cb16596e4ca5df3e6bf9fd0d
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.0.5~1
   idf:
     source:
       type: idf
@@ -148,8 +158,9 @@ dependencies:
 direct_dependencies:
 - espressif/esp-zboss-lib
 - espressif/esp-zigbee-lib
+- espressif/ssd1306
 - idf
 - protocol_examples_common
-manifest_hash: 5bd7d5b3fe800e6c2bed849587a774e0dc2b93ea614c1c218abf92514917e74c
+manifest_hash: cba263a4c165d475a77b8f7c3db9185aef4d98dd3da87ebfeb1577d565d506cf
 target: esp32c6
 version: 3.0.0
