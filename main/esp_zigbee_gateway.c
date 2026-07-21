@@ -138,7 +138,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     }
 }
 
-static void esp_zb_task(void *pvParameters)
+void esp_zb_task(void *pvParameters)
 {
     esp_zb_cfg_t zb_nwk_cfg = ESP_ZB_ZC_CONFIG();
     esp_zb_init(&zb_nwk_cfg);
@@ -177,6 +177,8 @@ static void esp_zb_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
+/*
+
 void app_main(void)
 {
     esp_zb_platform_config_t config = {
@@ -193,3 +195,4 @@ void app_main(void)
 #endif
     xTaskCreate(esp_zb_task, "Zigbee_main", 8192, NULL, 5, NULL);
 }
+*/

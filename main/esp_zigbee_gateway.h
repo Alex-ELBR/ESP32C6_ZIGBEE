@@ -1,3 +1,5 @@
+#ifndef __ESP_ZIGBEE_H
+#define __ESP_ZIGBEE_H
 /*
  * SPDX-FileCopyrightText: 2021-2024 Espressif Systems (Shanghai) CO LTD
  *
@@ -12,7 +14,7 @@
  * CONDITIONS OF ANY KIND, either express or implied.
  */
 
-#include "esp_err.h"
+ #include "esp_err.h"
 #include "esp_zigbee_core.h"
 
 /* Zigbee Configuration */
@@ -71,3 +73,9 @@
     {                                                           \
         .host_connection_mode = ZB_HOST_CONNECTION_MODE_NONE,   \
     }
+
+
+void esp_zb_task(void *pvParameters);
+
+
+#endif // __ESP_ZIGBEE_H
